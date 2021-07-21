@@ -46,9 +46,13 @@ docker run -it --rm \
 # Run full pipeline in Docker container.
 docker run -it --rm \
     --ulimit nofile=1024000:1024000 \
-    -v /home/js29/data:/data \
-    -v /home/js29/configs:/configs \
-    -v /home/js29/output:/output \
+    -v /path/to/credset:/data/finemapping/credset \ 
+    -v /path/to/top_loci:/data/finemapping/top_loci_by_chrom \ 
+    -v /path/to/extracted_sumstats:/data/filtered/significant_window_2mb \
+    -v /path/to/ukbb/reference:/data/ukb_v3_downsampled10k_plink \
+    -v /path/to/config_dir:/configs \
+    -v /path/to/config.yaml:/coloc/configs/config.yaml \
+    -v /path/to/output_dir:/output \
     otg-coloc /bin/bash run_coloc_pipeline_opt.sh
 ```
 
