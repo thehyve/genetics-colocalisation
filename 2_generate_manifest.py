@@ -17,7 +17,7 @@ import yaml
 def main():
     # Load config
     with open('/coloc/configs/config.yaml') as config_input:
-        config = yaml.load(config_input, Loader=yaml.FullLoader)
+        config = yaml.safe_load(config_input)
 
     # Parse args
     in_overlap_table = glob('/output/overlap_table/*.json.gz')[0]
