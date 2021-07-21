@@ -6,6 +6,7 @@ CORES="${CORES:-8}"
 
 bash 1_find_overlaps.sh
 python 2_generate_manifest.py
+python 2b_filter_manifest.py
 
 python 3a_make_conditioning_commands.py --quiet
 python 3a_make_conditioning_commands.py | shuf | parallel -j $CORES
