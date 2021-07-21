@@ -51,7 +51,8 @@ def main():
         for in_record in in_h:
             in_record = json.loads(in_record.decode())
 
-            if custom_studies and in_record['left_study_id'] not in custom_studies and \
+            if isinstance(custom_studies, list) and \
+                    in_record['left_study_id'] not in custom_studies and \
                     in_record['right_study_id'] not in custom_studies:
                 continue
 
