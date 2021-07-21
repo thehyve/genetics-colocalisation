@@ -15,10 +15,11 @@ export SPARK_HOME=/Users/em21/software/spark-2.4.0-bin-hadoop2.7
 export PYTHONPATH=$SPARK_HOME/python:$SPARK_HOME/python/lib/py4j-2.4.0-src.zip:$PYTHONPATH
 '''
 import pyspark.sql
-from pyspark.sql.types import *
 from pyspark.sql.functions import *
-import sys
+from pyspark.sql.types import *
+
 import os
+
 
 def main():
 
@@ -33,14 +34,14 @@ def main():
     print('Spark version: ', spark.version)
 
     # File args (dataproc)
-    in_parquet = 'gs://genetics-portal-dev-staging/coloc/210519_merged/coloc_processed.parquet'
-    in_sumstats = 'gs://genetics-portal-dev-sumstats/filtered/significant_window_2mb/union'
-    out_parquet = 'gs://genetics-portal-dev-staging/coloc/210519_merged/coloc_processed_w_betas.parquet'
+    # in_parquet = 'gs://genetics-portal-dev-staging/coloc/210519_merged/coloc_processed.parquet'
+    # in_sumstats = 'gs://genetics-portal-dev-sumstats/filtered/significant_window_2mb/union'
+    # out_parquet = 'gs://genetics-portal-dev-staging/coloc/210519_merged/coloc_processed_w_betas.parquet'
     
-    # # File args (local)
-    # in_parquet = '/home/ubuntu/results/coloc/results/coloc_processed.parquet'
-    # in_sumstats = '/home/ubuntu/data/sumstats/filtered/significant_window_2mb/union'
-    # out_parquet = '/home/ubuntu/results/coloc/results/coloc_processed_w_betas.parquet'
+    # File args (local)
+    in_parquet = '/output/coloc_processed.parquet'
+    in_sumstats = '/data/filtered/significant_window_2mb'
+    out_parquet = '/output/coloc_processed_w_betas.parquet'
 
     # Load coloc
     coloc = spark.read.parquet(in_parquet)
@@ -65,50 +66,84 @@ def main():
                 'left_var_right_study_pval', 'left_var_right_isCC')
     )
 
-    # Join using nullSafe for phenotype and bio_feature
-    # print('WARNING: this must be a left join in the final implementation')
-    join_expression = (
-        # Variants
-        (col('coloc.left_chrom') == col('sumstats.chrom')) &
-        (col('coloc.left_pos') == col('sumstats.pos')) &
-        (col('coloc.left_ref') == col('sumstats.ref')) &
-        (col('coloc.left_alt') == col('sumstats.alt')) &
-        # Study
-        (col('coloc.right_study') == col('sumstats.study_id')) &
-        (col('coloc.right_phenotype').eqNullSafe(col('sumstats.phenotype_id'))) &
-        (col('coloc.right_bio_feature').eqNullSafe(col('sumstats.bio_feature')))
-    )
-    merged =(
-        coloc.alias('coloc').join(
-            sumstats_join.alias('sumstats'),
-            on=join_expression,
-            how='left'
+    # Select studies
+    coloc_spark = spark.read.parquet(in_parquet)
+    coloc_df = coloc_spark.toPandas()
+    grouped_df = coloc_df.groupby('right_study')
+    for name, group in grouped_df:
+        print('Working on study: {}'.format(name))
+
+        sumstats_type = group.right_type.values[0]
+        if 'qtl' in sumstats_type:
+            sumstats_type = 'molecular_trait'
+
+        # Load coloc
+        coloc = spark.createDataFrame(group, schema=coloc_spark.schema)
+
+        # Load sumstats
+        sumstats_file = os.path.join(in_sumstats, sumstats_type, name + '.parquet')
+        sumstats = spark.read.parquet(sumstats_file)
+        # sumstats.printSchema()
+
+        # Rename join columns on sumstat table
+        sumstats_join = (
+            sumstats
+            # Statistic columns
+            .withColumnRenamed('beta', 'left_var_right_study_beta')
+            .withColumnRenamed('se', 'left_var_right_study_se')
+            .withColumnRenamed('pval', 'left_var_right_study_pval')
+            .withColumnRenamed('is_cc', 'left_var_right_isCC')
+            # Only keep required columns
+            .select('chrom', 'pos', 'ref', 'alt',
+                    'study_id', 'phenotype_id', 'bio_feature',
+                    'left_var_right_study_beta', 'left_var_right_study_se',
+                    'left_var_right_study_pval', 'left_var_right_isCC')
         )
-    )
 
-    # Drop duplicated columns
-    merged = merged.drop(
-        'chrom', 'pos', 'ref', 'alt',
-        'study_id', 'phenotype_id', 'bio_feature'
-    )
-
-    # Repartition
-    merged = (
-        merged.repartitionByRange('left_chrom', 'left_pos')
-        .sortWithinPartitions('left_chrom', 'left_pos')
-    )
-
-    # Write
-    (
-        merged
-        .write.parquet(
-            out_parquet,
-            mode='overwrite'
+        # Join using nullSafe for phenotype and bio_feature
+        # print('WARNING: this must be a left join in the final implementation')
+        join_expression = (
+            # Variants
+            (col('coloc.left_chrom') == col('sumstats.chrom')) &
+            (col('coloc.left_pos') == col('sumstats.pos')) &
+            (col('coloc.left_ref') == col('sumstats.ref')) &
+            (col('coloc.left_alt') == col('sumstats.alt')) &
+            # Study
+            (col('coloc.right_study') == col('sumstats.study_id')) &
+            (col('coloc.right_phenotype').eqNullSafe(col('sumstats.phenotype_id'))) &
+            (col('coloc.right_bio_feature').eqNullSafe(col('sumstats.bio_feature')))
         )
-    )
+        merged =(
+            coloc.alias('coloc').join(
+                sumstats_join.alias('sumstats'),
+                on=join_expression,
+                how='left'
+            )
+        )
+
+        # Drop duplicated columns
+        merged = merged.drop(
+            'chrom', 'pos', 'ref', 'alt',
+            'study_id', 'phenotype_id', 'bio_feature'
+        )
+
+        # Repartition
+        merged = (
+            merged.repartitionByRange('left_chrom', 'left_pos')
+            .sortWithinPartitions('left_chrom', 'left_pos')
+        )
+
+        # Write
+        (
+            merged
+            .write.parquet(
+                out_parquet,
+                mode='append'
+            )
+        )
 
     return 0
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
     main()
