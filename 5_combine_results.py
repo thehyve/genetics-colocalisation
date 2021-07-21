@@ -37,7 +37,7 @@ def main():
     # sc.setLogLevel('INFO')
 
     # Args
-    in_res_dir = '/output/coloc/'
+    in_res_dir = '/output/data/'
     out_coloc = '/output/coloc_raw.parquet'
 
     # Load
