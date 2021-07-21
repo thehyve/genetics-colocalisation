@@ -42,7 +42,7 @@ def main():
     out_parquet = '/output/coloc_processed.parquet'
     # in_parquet = '/Users/em21/Projects/genetics-colocalisation/tmp/coloc_raw.parquet'
     # out_parquet = '/Users/em21/Projects/genetics-colocalisation/tmp/coloc_processed.parquet'
-    in_phenotype_maps = '/configs/phenotype_id_gene_luts/*.tsv.gz'
+    in_phenotype_maps = '/coloc/configs/phenotype_id_gene_luts/*.tsv.gz'
 
     # Results parameters
     make_symmetric = True # Will make the coloc matrix symmetric
